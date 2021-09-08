@@ -7,7 +7,7 @@ use cpal::{
     traits::{DeviceTrait, HostTrait, StreamTrait},
     Stream,
 };
-use serde::{Deserialize, Serialize};
+use serde_repr::*;
 
 use super::decode_zvei;
 
@@ -57,19 +57,20 @@ impl ZveiDecoder {
 
 pub type Tonfolge = Vec<Zvei>;
 
-#[derive(PartialEq, Copy, Clone, Serialize, Deserialize, Debug)]
+#[derive(PartialEq, Copy, Clone, Serialize_repr, Deserialize_repr, Debug)]
+#[repr(i8)]
 pub enum Zvei {
-    ONE,
-    TWO,
-    THREE,
-    FOUR,
-    FIVE,
-    SIX,
-    SEVEN,
-    EIGHT,
-    NINE,
-    ZERO,
-    RESERVE,
+    ONE = 1,
+    TWO = 2,
+    THREE = 3,
+    FOUR = 4,
+    FIVE = 5,
+    SIX = 6,
+    SEVEN = 7,
+    EIGHT = 8,
+    NINE = 9,
+    ZERO = 0,
+    RESERVE = -1,
 }
 
 impl Display for Zvei {

@@ -1,8 +1,10 @@
 mod decoder;
+mod einsatzmittel;
 mod server;
 
 use chrono::Local;
 use decoder::ZveiDecoder;
+use einsatzmittel::Einsatzmittel;
 use server::Server;
 
 const SAMPLE_RATE: usize = 48000;
@@ -15,6 +17,7 @@ async fn main() -> ! {
     let server = Server::new();
     let sender = server.sender.clone();
     tokio::spawn(server.run());
+    let em = Einsatzmittel::init().await;
 
     let zvei_decoder = ZveiDecoder::new(
         "default",
@@ -33,10 +36,23 @@ async fn main() -> ! {
         let mut msg = String::new();
 
         msg.push_str(&format!("{} - ", time.format("%H:%M:%S")));
-        for z in s {
-            msg.push_str(&format!("{}", z));
+
+        let mut found_em = false;
+        for e in &em {
+            if e.tonfolge == s {
+                msg.push_str(&e.einsatzmittel);
+                found_em = true;
+            }
+        }
+
+        if !found_em {
+            for z in s {
+                msg.push_str(&format!("{}", z));
+            }
         }
         println!("{}", msg);
-        sender.send(msg).expect("Could not send sender");
+        if sender.receiver_count() > 0 {
+            sender.send(msg).expect("Could not send sender");
+        }
     }
 }

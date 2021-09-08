@@ -1,10 +1,17 @@
 use std::{
     convert::Infallible,
-    sync::atomic::{AtomicUsize, Ordering},
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    },
+    time::Duration,
 };
 
-use futures::{SinkExt, StreamExt};
-use tokio::sync::broadcast;
+use futures::SinkExt;
+use tokio::{
+    sync::{broadcast, mpsc, Mutex},
+    time,
+};
 use warp::{ws::Message, Filter};
 
 static NEXT_CONN_ID: AtomicUsize = AtomicUsize::new(1);
@@ -28,15 +35,40 @@ impl Server {
                 |ws: warp::ws::Ws, mut receiver: broadcast::Receiver<String>| {
                     ws.on_upgrade(move |socket| async move {
                         let my_id = NEXT_CONN_ID.fetch_add(1, Ordering::Relaxed);
-                        println!("New connection: {}", my_id);
-                        let (mut ws_tx, _) = socket.split();
+                        println!("New client! ID: {}", my_id);
+
+                        let socket = Arc::new(Mutex::new(socket));
+                        let socket_clone = socket.clone();
+
+                        let (break_tx, mut break_rx) = mpsc::channel::<bool>(1);
+
+                        tokio::spawn(async move {
+                            loop {
+                                time::sleep(Duration::from_secs(5)).await;
+                                if let Err(_) = socket_clone.lock().await
+                                    .send(Message::ping("--heartbeat--"))
+                                    .await
+                                {
+                                    break_tx.send(true).await.unwrap();
+                                    break;
+                                };
+                            }
+                        });
 
                         loop {
-                            let s = receiver.recv().await.unwrap();
-                            ws_tx
-                                .send(Message::text(s))
-                                .await
-                                .expect("Could not send ws");
+                            tokio::select! {
+                                s = receiver.recv() => {
+                                    let string = s.unwrap();
+                                    if let Err(_) = socket.lock().await.send(Message::text(string)).await {
+                                        println!("Client: {} disconnected", my_id);
+                                        break;
+                                    }
+                                }
+                                _ = break_rx.recv() => {
+                                    println!("Client {} disconnected", my_id);
+                                    break;
+                                }
+                            }
                         }
                     })
                 },
